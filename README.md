@@ -8,6 +8,11 @@ _Optimizing Solar Energy ROI with Precision Data_
 ![License](https://img.shields.io/badge/License-TBD-lightgrey)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen)
 
+<p align="center">
+  <strong>Developers</strong>: Anargya Shafa Setiyadi Putra, Umar, Ahmad Nayottama Juliansyah, Muhammad Rifqi Fathurrahman<br/>
+  <strong>Institution</strong>: Institut Teknologi Sepuluh Nopember
+</p>
+
 </div>
 
 ## Ringkasan

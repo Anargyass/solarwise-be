@@ -7,9 +7,11 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"solar-backend/internal/config"
 )
 
-const nasaPowerURL = "https://power.larc.nasa.gov/api/temporal/climatology/point"
+const defaultNasaPowerURL = "https://power.larc.nasa.gov/api/temporal/climatology/point"
 
 var nasaHTTPClient = &http.Client{
 	Timeout: 10 * time.Second,
@@ -25,7 +27,8 @@ type nasaResponse struct {
 }
 
 func GetClimatologyData(lat float64, lon float64) (radiasi float64, suhu float64, err error) {
-	u, err := url.Parse(nasaPowerURL)
+	nasaURL := config.GetEnvOrDefault("NASA_POWER_URL", defaultNasaPowerURL)
+	u, err := url.Parse(nasaURL)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to parse NASA URL: %w", err)
 	}

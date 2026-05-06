@@ -7,9 +7,11 @@ import (
 	"net/url"
 	"os"
 	"time"
+
+	"solar-backend/internal/config"
 )
 
-const googleMapsGeocodeURL = "https://maps.googleapis.com/maps/api/geocode/json"
+const defaultGoogleMapsGeocodeURL = "https://maps.googleapis.com/maps/api/geocode/json"
 
 var googleMapsHTTPClient = &http.Client{
 	Timeout: 10 * time.Second,
@@ -41,7 +43,8 @@ func GetCoordinatesFromGoogleMaps(location string) (lat float64, lon float64, er
 		return 0, 0, fmt.Errorf("GOOGLE_MAPS_API_KEY environment variable is not set")
 	}
 
-	u, err := url.Parse(googleMapsGeocodeURL)
+	geocodeURL := config.GetEnvOrDefault("GOOGLE_MAPS_GEOCODE_URL", defaultGoogleMapsGeocodeURL)
+	u, err := url.Parse(geocodeURL)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to parse Google Maps URL: %w", err)
 	}

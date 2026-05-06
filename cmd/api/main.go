@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
 
+	"solar-backend/internal/config"
 	"solar-backend/internal/handlers"
 )
 
@@ -25,11 +26,25 @@ func main() {
 	}
 
 	router := chi.NewRouter()
-	router.Use(cors.AllowAll().Handler)
+	allowedOrigins := config.GetCSVEnvOrDefault("CORS_ALLOWED_ORIGINS", []string{"*"})
+	router.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   allowedOrigins,
+		AllowedMethods:   []string{http.MethodGet, http.MethodPost, http.MethodOptions},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
 	router.Post("/v1/simulation", handlers.SimulateHandler)
 
+	port := config.GetEnvOrDefault("PORT", "8080")
+	addr := ":" + port
+	if len(port) > 0 && port[0] == ':' {
+		addr = port
+	}
+
 	server := &http.Server{
-		Addr:         ":8080",
+		Addr:         addr,
 		Handler:      router,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 15 * time.Second,
@@ -37,7 +52,7 @@ func main() {
 	}
 
 	go func() {
-		log.Println("server listening on :8080")
+		log.Printf("server listening on %s", addr)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server failed: %v", err)
 		}

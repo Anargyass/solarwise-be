@@ -40,12 +40,19 @@ func CalculateFeasibility(req models.SimulationRequest) (*models.SimulationRespo
 		return nil, fmt.Errorf("invalid radiation data")
 	}
 
-	// Step 1: Hitung kebutuhan kapasitas berdasarkan tagihan bulanan (tanpa constraints dulu)
+	// Layer 1: Energy model
+	// Gunakan faktor musiman sederhana agar produksi tidak terlalu optimistis.
+	seasonalFactor := 0.9
+	effectiveRadiation := radiasi * seasonalFactor
+
+	// Hitung kebutuhan kapasitas berdasarkan tagihan bulanan.
 	kebutuhanBulananKwh := req.TagihanBulanan / tarifPLN
 	kebutuhanHarianKwh := kebutuhanBulananKwh / 30.0
-	requiredKwp := kebutuhanHarianKwh / (radiasi * performanceRatio)
+	requiredKwp := kebutuhanHarianKwh / (effectiveRadiation * performanceRatio)
 
-	// Step 2: Evaluate multi-kandidat kapasitas (bukan single hard cap)
+	// Layer 2: System constraint
+	// DESIGN LIMIT: batas offset ini bukan constraint fisik, hanya batas desain
+	// agar sistem tidak over-sized terhadap profil konsumsi yang dimodelkan.
 	maxSystemKwp := 8.0
 	defaultMaxRoofArea := 40.0
 	maxOffsetRatio := 0.75
@@ -56,8 +63,8 @@ func CalculateFeasibility(req models.SimulationRequest) (*models.SimulationRespo
 		maxCandidateKwp = 2.0
 	}
 
-	candidateKwp := make([]float64, 0, int(math.Ceil(maxCandidateKwp))-1)
-	for kwp := 2.0; kwp <= maxCandidateKwp+1e-9; kwp += 1.0 {
+	candidateKwp := make([]float64, 0, int(math.Ceil(maxCandidateKwp/kapasitasPerPanel)))
+	for kwp := 2.0; kwp <= maxCandidateKwp+1e-9; kwp += kapasitasPerPanel {
 		candidateKwp = append(candidateKwp, kwp)
 	}
 	if len(candidateKwp) == 0 {
@@ -77,6 +84,7 @@ func CalculateFeasibility(req models.SimulationRequest) (*models.SimulationRespo
 		estimasiBiaya     float64
 		breakEvenYear     int
 		requestedKwp      float64
+		effectiveScore    float64
 	}
 
 	validScenarios := make([]scenarioResult, 0, len(candidateKwp))
@@ -85,13 +93,14 @@ func CalculateFeasibility(req models.SimulationRequest) (*models.SimulationRespo
 		actualKwp := float64(jumlahPanel) * kapasitasPerPanel
 		luasAtap := float64(jumlahPanel) * luasPerPanel
 
-		// Constraint filter: luas atap
+		// Constraint fisik: luas atap.
 		if luasAtap > defaultMaxRoofArea {
 			continue
 		}
 
+		// Layer 3: Economic model
 		estimasiBiaya := actualKwp * hargaPerKWp
-		produksiBulananKwh := actualKwp * radiasi * performanceRatio * 30.0
+		produksiBulananKwh := actualKwp * effectiveRadiation * performanceRatio * 30.0
 		effectiveOffsetKwh := math.Min(produksiBulananKwh, maxOffsetKwh)
 		savingPerBulan := effectiveOffsetKwh * tarifPLN
 		if savingPerBulan <= 0 {
@@ -101,13 +110,12 @@ func CalculateFeasibility(req models.SimulationRequest) (*models.SimulationRespo
 		savingTahunan := savingPerBulan * 12.0
 		roiTahun := estimasiBiaya / savingTahunan
 
-		// Constraint filter: ROI terlalu panjang
-		if roiTahun > 15.0 {
-			continue
-		}
-
 		coverageRatio := effectiveOffsetKwh / kebutuhanBulananKwh
 		breakEvenYear := int(math.Ceil(roiTahun))
+		effectiveScore := 0.7*roiTahun - 0.3*coverageRatio
+		if roiTahun > 15.0 {
+			effectiveScore += 5.0
+		}
 
 		validScenarios = append(validScenarios, scenarioResult{
 			jumlahPanel:     jumlahPanel,
@@ -122,6 +130,7 @@ func CalculateFeasibility(req models.SimulationRequest) (*models.SimulationRespo
 			estimasiBiaya:   estimasiBiaya,
 			breakEvenYear:   breakEvenYear,
 			requestedKwp:    requestedKwp,
+			effectiveScore:  effectiveScore,
 		})
 	}
 
@@ -129,15 +138,16 @@ func CalculateFeasibility(req models.SimulationRequest) (*models.SimulationRespo
 		return nil, fmt.Errorf("no feasible scenario found within roof area and ROI constraints")
 	}
 
-	// Step 3: Pilih skenario terbaik: ROI minimum, jika mirip pilih coverage lebih tinggi
+	// Step 3: Pilih skenario terbaik menggunakan scoring gabungan.
+	// Score menyeimbangkan ROI dan coverage, sehingga tidak bias ke sistem kecil.
 	best := validScenarios[0]
 	for i := 1; i < len(validScenarios); i++ {
 		s := validScenarios[i]
-		if s.roiTahun < best.roiTahun {
+		if s.effectiveScore < best.effectiveScore {
 			best = s
 			continue
 		}
-		if math.Abs(s.roiTahun-best.roiTahun) <= 0.1 && s.coverageRatio > best.coverageRatio {
+		if math.Abs(s.effectiveScore-best.effectiveScore) <= 0.1 && s.coverageRatio > best.coverageRatio {
 			best = s
 		}
 	}
@@ -178,7 +188,7 @@ func CalculateFeasibility(req models.SimulationRequest) (*models.SimulationRespo
 		reasoning = fmt.Sprintf("Investasi tidak masuk kategori layak karena estimasi balik modal %.2f tahun melebihi ambang 10 tahun. Meskipun sistem dapat menutup %.0f%% konsumsi (%.0f Rp per bulan), periode pengembalian modal yang panjang melampaui batasan kelayakan ekonomi. Skalabilitas dan optimasi biaya sangat perlu untuk memperbaiki kelayakan investasi ini.", roiTahun, coverageRatio*100, savingPerBulan)
 	}
 
-	// Generate ROI chart data untuk 15 tahun
+	// Generate ROI chart data untuk 15 tahun dengan degradasi tahunan 0.5%.
 	roiChartData := generateROIChartData(estimasiBiaya, savingTahunan, chartYears)
 
 	warnings := make([]string, 0, 6)
@@ -346,6 +356,7 @@ func CalculateFeasibility(req models.SimulationRequest) (*models.SimulationRespo
 // dengan akumulasi profit (Saving Tahunan - Investasi Awal)
 func generateROIChartData(investasi float64, savingTahunan float64, years int) []models.ROIChartData {
 	chartData := make([]models.ROIChartData, years+1)
+	degradationRate := 0.005
 
 	// Year 0: only initial investment (negative)
 	chartData[0] = models.ROIChartData{
@@ -353,10 +364,11 @@ func generateROIChartData(investasi float64, savingTahunan float64, years int) [
 		CumulativeProfit: math.Round(-investasi*100) / 100,
 	}
 
-	// Year 1..N: cumulative profit = (year * annual_saving) - investment
+	// Year 1..N: cumulative profit memakai saving yang terdegradasi setiap tahun.
 	akumulasi := -investasi
 	for i := 1; i <= years; i++ {
-		akumulasi += savingTahunan
+		savingYearN := savingTahunan * math.Pow(1-degradationRate, float64(i))
+		akumulasi += savingYearN
 		chartData[i] = models.ROIChartData{
 			Year:             i,
 			CumulativeProfit: math.Round(akumulasi*100) / 100,

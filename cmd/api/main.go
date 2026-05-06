@@ -26,7 +26,7 @@ func main() {
 
 	router := chi.NewRouter()
 	router.Use(cors.AllowAll().Handler)
-	router.Post("/api/v1/simulation", handlers.SimulateHandler)
+	router.Post("/v1/simulation", handlers.SimulateHandler)
 
 	server := &http.Server{
 		Addr:         ":8080",

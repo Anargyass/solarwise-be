@@ -15,6 +15,10 @@ _Optimizing Solar Energy ROI with Precision Data_
 
 </div>
 
+**Navigasi**: [Ringkasan](#ringkasan) | [Fitur](#fitur-utama) | [Tech Stack](#tech-stack) | [Arsitektur](#arsitektur-sistem) | [API](#api-reference) | [Setup](#getting-started) | [Lampiran](#lampiran-teknis-calculator-roi-engine-transparansi)
+
+---
+
 ## Ringkasan
 - SolarWise adalah platform decision-support untuk ROI PLTS atap berbasis data lokasi dan radiasi.
 - Repositori ini menyediakan backend API dan engine kalkulasi SolarWise.
@@ -107,6 +111,9 @@ curl -X POST http://localhost:8080/v1/simulation \
 ## Status dan Lisensi
 - Status: Active (prototype).
 - License: TBD.
+
+
+---
 
 ## Lampiran Teknis: Calculator ROI Engine (Transparansi)
 Konten teknis berikut melampirkan seluruh inti penjelasan dari [calculator.md](calculator.md) secara jelas dan bertahap. Klik untuk membuka.
